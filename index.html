@@ -1009,11 +1009,59 @@
       URL.revokeObjectURL(url);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+// 생성된 Google Sheets ID 자동 연결 완료
+    const GOOGLE_SHEET_ID = "1AFwrzsyRcac-N_DDOzBuhTdIbIz4QtxFSo5u-LXWgVM";
+
+    async function fetchSheetDataAndMerge() {
+      try {
+        const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json`;
+        const res = await fetch(url);
+        const text = await res.text();
+        
+        const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+        const data = JSON.parse(jsonStr);
+        const rows = data.table.rows || [];
+
+        const sheetRecords = rows.map(r => {
+          const c = r.c;
+          return {
+            record_date: c[1]?.v || "",
+            shift: c[2]?.v || "day",
+            weather: c[3]?.v || "맑음",
+            author: AUTHOR_MAP[c[4]?.v] || c[4]?.v || "조영환",
+            lab_temp: parseFloat(c[5]?.v || 22.0),
+            lab_humidity: parseFloat(c[6]?.v || 45.0),
+            zones: c[7]?.v ? JSON.parse(c[7].v) : []
+          };
+        }).filter(rec => rec.record_date && rec.zones.length > 0);
+
+        if (sheetRecords.length > 0) {
+          const map = new Map();
+          ALL_RECORDS.forEach(item => map.set(`${item.record_date}_${item.shift}`, item));
+          sheetRecords.forEach(item => map.set(`${item.record_date}_${item.shift}`, item));
+
+          const merged = Array.from(map.values()).sort((a, b) => {
+            if (a.record_date !== b.record_date) return b.record_date.localeCompare(a.record_date);
+            return a.shift === 'night' ? -1 : 1;
+          });
+
+          ALL_RECORDS.length = 0;
+          ALL_RECORDS.push(...merged);
+
+          renderOverview();
+          renderChecksheetTab();
+        }
+      } catch (err) {
+        console.error("Google Sheets 자동 동기화 오류:", err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
       lucide.createIcons();
       renderOverview();
       renderChecksheetTab();
-    });
+      await fetchSheetDataAndMerge();
+    });    
   </script>
 </body>
 </html>    
